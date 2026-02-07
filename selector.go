@@ -22,6 +22,13 @@ const (
 	modeConfirmDelete
 )
 
+type selectorOptions struct {
+	AndType    string
+	AndExit    bool
+	AndKeys    []string
+	AndConfirm string
+}
+
 type selectorResult struct {
 	Kind        string
 	Path        string
@@ -81,10 +88,31 @@ var (
 	cursorStyle = lipgloss.NewStyle().Reverse(true)
 )
 
-func runSelector(basePath, initialQuery string) (selectorResult, error) {
+func setNoColors(disable bool) {
+	if !disable {
+		titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
+		dimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+		selStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("45")).Bold(true)
+		errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
+		dangerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("204")).Bold(true)
+		cursorStyle = lipgloss.NewStyle().Reverse(true)
+		return
+	}
+	titleStyle = lipgloss.NewStyle().Bold(true)
+	dimStyle = lipgloss.NewStyle()
+	selStyle = lipgloss.NewStyle().Bold(true)
+	errorStyle = lipgloss.NewStyle().Bold(true)
+	dangerStyle = lipgloss.NewStyle().Bold(true)
+	cursorStyle = lipgloss.NewStyle().Reverse(true)
+}
+
+func runSelector(basePath, initialQuery string, opts selectorOptions) (selectorResult, error) {
 	entries, err := loadDirs(basePath)
 	if err != nil {
 		return selectorResult{}, err
+	}
+	if opts.AndType != "" {
+		initialQuery = opts.AndType
 	}
 	m := selectorModel{
 		basePath:    basePath,
@@ -94,6 +122,29 @@ func runSelector(basePath, initialQuery string) (selectorResult, error) {
 		markedPaths: map[string]struct{}{},
 	}
 	m.refresh()
+
+	if opts.AndExit && len(opts.AndKeys) == 0 {
+		fmt.Fprintln(os.Stderr, m.View())
+		return selectorResult{}, errRenderOnly
+	}
+	if len(opts.AndKeys) > 0 {
+		for _, s := range opts.AndKeys {
+			msg := testKeyToMsg(s)
+			next, _ := m.Update(msg)
+			m = next.(selectorModel)
+			if m.mode == modeConfirmDelete && opts.AndConfirm != "" {
+				m.confirmText = opts.AndConfirm
+				m.confirmCursor = utf8.RuneCountInString(m.confirmText)
+			}
+			if m.quit {
+				return selectorResult{}, errCancelled
+			}
+			if m.result.Kind != "" {
+				return m.result, nil
+			}
+		}
+		return selectorResult{}, errCancelled
+	}
 
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithOutput(os.Stderr))
 	out, err := p.Run()
@@ -192,6 +243,15 @@ func (m selectorModel) updateBrowse(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	case "ctrl+t":
+		q := sanitizeName(m.query)
+		if q == "" {
+			q = "new"
+		}
+		today := time.Now().Format("2006-01-02")
+		dir := uniqueDirName(m.basePath, fmt.Sprintf("%s-%s", today, q))
+		m.result = selectorResult{Kind: "mkdir", Path: filepath.Join(m.basePath, dir)}
+		return m, tea.Quit
 	}
 
 	if applyEditKey(&m.query, &m.queryCursor, msg) {
@@ -669,4 +729,53 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func testKeyToMsg(s string) tea.KeyMsg {
+	switch s {
+	case "\r":
+		return tea.KeyMsg{Type: tea.KeyEnter}
+	case "\x1b":
+		return tea.KeyMsg{Type: tea.KeyEsc}
+	case "\x1b[A":
+		return tea.KeyMsg{Type: tea.KeyUp}
+	case "\x1b[B":
+		return tea.KeyMsg{Type: tea.KeyDown}
+	case "\x1b[C":
+		return tea.KeyMsg{Type: tea.KeyRight}
+	case "\x1b[D":
+		return tea.KeyMsg{Type: tea.KeyLeft}
+	case "\x7f", "\b":
+		return tea.KeyMsg{Type: tea.KeyBackspace}
+	case "\x01":
+		return tea.KeyMsg{Type: tea.KeyCtrlA}
+	case "\x02":
+		return tea.KeyMsg{Type: tea.KeyCtrlB}
+	case "\x03":
+		return tea.KeyMsg{Type: tea.KeyCtrlC}
+	case "\x04":
+		return tea.KeyMsg{Type: tea.KeyCtrlD}
+	case "\x05":
+		return tea.KeyMsg{Type: tea.KeyCtrlE}
+	case "\x06":
+		return tea.KeyMsg{Type: tea.KeyCtrlF}
+	case "\x0b":
+		return tea.KeyMsg{Type: tea.KeyCtrlK}
+	case "\x0e":
+		return tea.KeyMsg{Type: tea.KeyCtrlN}
+	case "\x10":
+		return tea.KeyMsg{Type: tea.KeyCtrlP}
+	case "\x12":
+		return tea.KeyMsg{Type: tea.KeyCtrlR}
+	case "\x14":
+		return tea.KeyMsg{Type: tea.KeyCtrlT}
+	case "\x17":
+		return tea.KeyMsg{Type: tea.KeyCtrlW}
+	default:
+		r := []rune(s)
+		if len(r) > 0 {
+			return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r[0]}}
+		}
+		return tea.KeyMsg{}
+	}
 }

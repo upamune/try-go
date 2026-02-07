@@ -27,3 +27,13 @@ func TestNormalizeArgsKeepsCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestParseTestKeysTokenMode(t *testing.T) {
+	got := parseTestKeys("CTRL-D,ENTER,Y,E,S,ENTER")
+	if len(got) != 6 {
+		t.Fatalf("unexpected keys len: %#v", got)
+	}
+	if got[0] != "\x04" || got[1] != "\r" || got[2] != "Y" {
+		t.Fatalf("unexpected mapping: %#v", got)
+	}
+}
