@@ -4,6 +4,12 @@
 
 ## Install
 
+### Homebrew
+
+```bash
+brew install upamune/tap/try
+```
+
 ### Go install
 
 ```bash
@@ -13,15 +19,13 @@ go install github.com/upamune/try-go/cmd/try@latest
 ### mise
 
 ```bash
-mise use -g go@1.24
-mise use -g pinact@3.4.4
-mise install
+mise use -g go:github.com/upamune/try-go/cmd/try@latest
 ```
 
-Then build/install from source if needed:
+After installing `try`, enable shell integration:
 
 ```bash
-go build -o try ./cmd/try
+eval "$(try init)"
 ```
 
 ## Usage
@@ -35,13 +39,12 @@ try my-project
 
 # clone workflow
 try clone https://github.com/user/repo
-
-# shell integration
-try init
 ```
 
-For shell integration:
+## Development
 
 ```bash
-eval "$(try init)"
+mise trust
+mise install
+mise run build
 ```

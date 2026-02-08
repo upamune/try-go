@@ -1,9 +1,12 @@
 package trypkg
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -122,5 +125,35 @@ func TestRunExecAndExitRenderOnly(t *testing.T) {
 	}
 	if err != errRenderOnly {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExecEmitsANSIWhenStdoutIsCapturedAndStderrIsTTY(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("script-based tty test is not supported on windows")
+	}
+	if _, err := exec.LookPath("script"); err != nil {
+		t.Skip("script command is required")
+	}
+	if _, err := exec.LookPath("zsh"); err != nil {
+		t.Skip("zsh is required")
+	}
+
+	cmd := exec.Command(
+		"script",
+		"-q",
+		"/dev/null",
+		"zsh",
+		"-lc",
+		"out=$(go run ./cmd/try exec --and-type foo --and-exit 2>/dev/tty); :",
+	)
+	cmd.Dir = "../.."
+	cmd.Env = append(os.Environ(), "NO_COLOR=")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("script command failed: %v\n%s", err, out)
+	}
+	if !bytes.Contains(out, []byte("\x1b[")) {
+		t.Fatalf("expected ANSI color/style escape sequences, got:\n%s", out)
 	}
 }

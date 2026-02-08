@@ -90,12 +90,15 @@ var (
 
 func setNoColors(disable bool) {
 	if !disable {
-		titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
-		dimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
-		selStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("45")).Bold(true)
-		errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
-		dangerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("204")).Bold(true)
-		cursorStyle = lipgloss.NewStyle().Reverse(true)
+		// Use stderr for profile detection so shell wrappers that capture stdout
+		// (e.g. `out=$(try exec ...)`) still keep colors in interactive TUI output.
+		renderer := lipgloss.NewRenderer(os.Stderr)
+		titleStyle = renderer.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
+		dimStyle = renderer.NewStyle().Foreground(lipgloss.Color("242"))
+		selStyle = renderer.NewStyle().Foreground(lipgloss.Color("45")).Bold(true)
+		errorStyle = renderer.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
+		dangerStyle = renderer.NewStyle().Foreground(lipgloss.Color("204")).Bold(true)
+		cursorStyle = renderer.NewStyle().Reverse(true)
 		return
 	}
 	titleStyle = lipgloss.NewStyle().Bold(true)
