@@ -46,7 +46,8 @@ type cloneCmd struct {
 }
 
 type worktreeCmd struct {
-	Name string `arg:"" optional:"" name:"name" help:"Worktree name (default: current dir name)."`
+	Dir  string `arg:"" optional:"" name:"dir" help:"Repo directory or worktree name."`
+	Name string `arg:"" optional:"" name:"name" help:"Worktree name (when dir is given)."`
 }
 
 type execCmd struct {
@@ -138,8 +139,9 @@ func Main() {
 		return
 	case strings.HasPrefix(cmd, "clone "):
 		script, err = runClone(basePath, c.Clone.URL, c.Clone.Name)
-	case strings.HasPrefix(cmd, "worktree "):
-		script, err = runWorktree(basePath, c.Worktree.Name)
+	case strings.HasPrefix(cmd, "worktree"):
+		repoDir, wtName := resolveWorktreeArgs(c.Worktree.Dir, c.Worktree.Name)
+		script, err = runWorktree(basePath, repoDir, wtName)
 	case strings.HasPrefix(cmd, "exec "):
 		script, err = runExec(basePath, strings.Join(c.Exec.Query, " "), opts)
 	default:
@@ -178,11 +180,20 @@ func runExec(basePath, query string, opts execOptions) ([]string, error) {
 				}
 				return runClone(basePath, parts[1], custom)
 			case "worktree":
-				name := ""
-				if len(parts) > 1 {
-					name = strings.Join(parts[1:], "-")
+				var repoDir, wtName string
+				switch {
+				case len(parts) > 2:
+					repoDir = parts[1]
+					wtName = strings.Join(parts[2:], "-")
+				case len(parts) == 2:
+					arg := parts[1]
+					if info, statErr := os.Stat(arg); statErr == nil && info.IsDir() {
+						repoDir = arg
+					} else {
+						wtName = arg
+					}
 				}
-				return runWorktree(basePath, name)
+				return runWorktree(basePath, repoDir, wtName)
 			}
 		}
 	}
@@ -265,10 +276,42 @@ func runClone(basePath, rawURL, name string) ([]string, error) {
 	return scriptClone(target, rawURL), nil
 }
 
-func runWorktree(basePath, name string) ([]string, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return nil, err
+// resolveWorktreeArgs disambiguates kong-parsed worktree positional args.
+// When only one arg is given (dir filled, name empty), check if it's a
+// directory on disk to decide whether it's a repo dir or a worktree name.
+func resolveWorktreeArgs(dir, name string) (repoDir, wtName string) {
+	if name != "" {
+		return dir, name
+	}
+	if dir == "" {
+		return "", ""
+	}
+	// Single arg given — if it exists as a directory, treat as repo dir.
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		return dir, ""
+	}
+	// Otherwise treat as worktree name (backward compatible).
+	return "", dir
+}
+
+func runWorktree(basePath, repoDir, name string) ([]string, error) {
+	var wd string
+	if repoDir == "" {
+		var err error
+		wd, err = os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		expanded, err := expandPath(repoDir)
+		if err != nil {
+			return nil, err
+		}
+		abs, err := filepath.Abs(expanded)
+		if err != nil {
+			return nil, err
+		}
+		wd = abs
 	}
 	base := strings.TrimSpace(name)
 	if base == "" {
