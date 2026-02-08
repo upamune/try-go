@@ -6,12 +6,22 @@ on:
   pull_request:
 
 jobs:
+  build-format-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
+      - run: mise trust
+      - run: mise run build
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)"
+      - run: mise run lint
+
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version-file: go.mod
+      - uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
+      - run: mise trust
       - run: go test ./...
-      - run: go build ./...
+      - run: mise run build

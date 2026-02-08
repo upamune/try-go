@@ -27,6 +27,14 @@ mise run lint           # runs: go vet ./... && revive -set_exit_status ./...
 mise run format         # or: go fmt ./...
 ```
 
+## GitHub Actions Rule
+
+When you modify files under `.github/workflows/`, run `pinact` afterward to pin action versions.
+
+```bash
+mise x pinact -- pinact run
+```
+
 ## Architecture
 
 All code lives in two packages:
