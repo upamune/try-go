@@ -53,6 +53,68 @@ func TestRunExecWorktreeSubcommand(t *testing.T) {
 	}
 }
 
+func TestRunExecWorktreeDirSubcommand(t *testing.T) {
+	base := t.TempDir()
+	repoDir := t.TempDir()
+	script, err := runExec(base, "worktree "+repoDir+" mybranch", execOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(script, "\n")
+	if !strings.Contains(joined, "worktree add --detach") {
+		t.Fatalf("missing worktree command: %s", joined)
+	}
+	if !strings.Contains(joined, repoDir) {
+		t.Fatalf("missing repo dir in script: %s", joined)
+	}
+	if !strings.Contains(joined, "mybranch") {
+		t.Fatalf("missing worktree name: %s", joined)
+	}
+}
+
+func TestRunWorktreeWithExplicitDir(t *testing.T) {
+	base := t.TempDir()
+	repoDir := t.TempDir()
+	script, err := runWorktree(base, repoDir, "feat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(script, "\n")
+	if !strings.Contains(joined, "worktree add --detach") {
+		t.Fatalf("missing worktree command: %s", joined)
+	}
+	if !strings.Contains(joined, repoDir) {
+		t.Fatalf("expected repo dir in script: %s", joined)
+	}
+}
+
+func TestResolveWorktreeArgs(t *testing.T) {
+	// Both args given
+	rd, wn := resolveWorktreeArgs("/some/dir", "name")
+	if rd != "/some/dir" || wn != "name" {
+		t.Fatalf("expected (/some/dir, name), got (%s, %s)", rd, wn)
+	}
+
+	// No args
+	rd, wn = resolveWorktreeArgs("", "")
+	if rd != "" || wn != "" {
+		t.Fatalf("expected empty, got (%s, %s)", rd, wn)
+	}
+
+	// Single arg that is a directory
+	tmpDir := t.TempDir()
+	rd, wn = resolveWorktreeArgs(tmpDir, "")
+	if rd != tmpDir || wn != "" {
+		t.Fatalf("expected dir=%s name=empty, got (%s, %s)", tmpDir, rd, wn)
+	}
+
+	// Single arg that is not a directory → treat as name
+	rd, wn = resolveWorktreeArgs("not-a-dir-xyz", "")
+	if rd != "" || wn != "not-a-dir-xyz" {
+		t.Fatalf("expected dir=empty name=not-a-dir-xyz, got (%s, %s)", rd, wn)
+	}
+}
+
 func TestRunExecDotRequiresName(t *testing.T) {
 	base := t.TempDir()
 	_, err := runExec(base, ".", execOptions{})

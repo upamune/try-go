@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -48,8 +49,9 @@ type dirEntry struct {
 }
 
 type scoredEntry struct {
-	Entry dirEntry
-	Score float64
+	Entry     dirEntry
+	Score     float64
+	Positions []int
 }
 
 type selectorModel struct {
@@ -65,6 +67,8 @@ type selectorModel struct {
 	scroll      int
 	width       int
 	height      int
+	envWidth    int
+	envHeight   int
 
 	mode selectorMode
 
@@ -120,6 +124,7 @@ var (
 	titleStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
 	dimStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
 	selStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("45")).Bold(true)
+	matchStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
 	errorStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
 	dangerStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("204")).Bold(true)
 	cursorStyle      = lipgloss.NewStyle().Reverse(true)
@@ -139,6 +144,7 @@ func setNoColors(disable bool) {
 		titleStyle = renderer.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
 		dimStyle = renderer.NewStyle().Foreground(lipgloss.Color("242"))
 		selStyle = renderer.NewStyle().Foreground(lipgloss.Color("45")).Bold(true)
+		matchStyle = renderer.NewStyle().Bold(true).Foreground(lipgloss.Color("11"))
 		errorStyle = renderer.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
 		dangerStyle = renderer.NewStyle().Foreground(lipgloss.Color("204")).Bold(true)
 		cursorStyle = renderer.NewStyle().Reverse(true)
@@ -153,6 +159,7 @@ func setNoColors(disable bool) {
 	titleStyle = lipgloss.NewStyle().Bold(true)
 	dimStyle = lipgloss.NewStyle()
 	selStyle = lipgloss.NewStyle().Bold(true)
+	matchStyle = lipgloss.NewStyle().Bold(true)
 	errorStyle = lipgloss.NewStyle().Bold(true)
 	dangerStyle = lipgloss.NewStyle().Bold(true)
 	cursorStyle = lipgloss.NewStyle().Reverse(true)
@@ -180,6 +187,8 @@ func runSelector(basePath, initialQuery string, opts selectorOptions) (selectorR
 		markedPaths: map[string]struct{}{},
 		help:        help.New(),
 		keys:        defaultSelectorKeyMap(),
+		envWidth:    envIntOr("TRY_WIDTH", 0),
+		envHeight:   envIntOr("TRY_HEIGHT", 0),
 	}
 	m.help.ShowAll = false
 	m.refresh()
@@ -232,7 +241,13 @@ func (m selectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.help.Width = maxInt(20, msg.Width-4)
+		if m.envWidth > 0 {
+			m.width = m.envWidth
+		}
+		if m.envHeight > 0 {
+			m.height = m.envHeight
+		}
+		m.help.Width = maxInt(20, m.width-4)
 		m.refresh()
 		return m, nil
 	case tea.KeyMsg:
@@ -459,8 +474,17 @@ func (m selectorModel) View() string {
 			if twoCol {
 				nameWidth = maxInt(16, leftW-14)
 			}
-			name := renderName(m.items[i].Entry.Name, nameWidth)
-			age := dimStyle.Render("  " + relativeAge(m.items[i].Entry.MTime))
+			var name string
+			if strings.TrimSpace(m.query) != "" && len(m.items[i].Positions) > 0 {
+				name = renderNameHighlighted(m.items[i].Entry.Name, m.items[i].Positions, nameWidth)
+			} else {
+				name = renderName(m.items[i].Entry.Name, nameWidth)
+			}
+			meta := relativeAge(m.items[i].Entry.MTime)
+			if strings.TrimSpace(m.query) != "" {
+				meta += fmt.Sprintf(", %.1f", m.items[i].Score)
+			}
+			age := dimStyle.Render("  " + meta)
 			list.WriteString(rowStyle.Render(mark+prefix+name) + age + "\n")
 			continue
 		}
@@ -666,30 +690,41 @@ func loadDirs(basePath string) ([]dirEntry, error) {
 
 func filterEntries(all []dirEntry, query string) []scoredEntry {
 	query = strings.ToLower(strings.TrimSpace(query))
+	queryRuneCount := utf8.RuneCountInString(query)
 	res := make([]scoredEntry, 0, len(all))
 	for _, e := range all {
-		score, ok := fuzzyScore(strings.ToLower(e.Name), query)
+		score, positions, ok := fuzzyScore(strings.ToLower(e.Name), query)
 		if !ok {
 			continue
 		}
-		res = append(res, scoredEntry{Entry: e, Score: e.Base + score})
+		if query != "" && len(positions) > 0 {
+			lastPos := positions[len(positions)-1]
+			score *= float64(queryRuneCount) / float64(lastPos+1)      // density
+			score *= 10.0 / float64(utf8.RuneCountInString(e.Name)+10) // length penalty
+		}
+		res = append(res, scoredEntry{Entry: e, Score: e.Base + score, Positions: positions})
 	}
 	sort.SliceStable(res, func(i, j int) bool {
-		if res[i].Score == res[j].Score {
+		if res[i].Score != res[j].Score {
+			return res[i].Score > res[j].Score
+		}
+		if !res[i].Entry.MTime.Equal(res[j].Entry.MTime) {
 			return res[i].Entry.MTime.After(res[j].Entry.MTime)
 		}
-		return res[i].Score > res[j].Score
+		return len(res[i].Entry.Name) < len(res[j].Entry.Name)
 	})
 	return res
 }
 
-func fuzzyScore(name, query string) (float64, bool) {
+func fuzzyScore(name, query string) (float64, []int, bool) {
 	if query == "" {
-		return 0, true
+		return 0, nil, true
 	}
 	ni := 0
+	runeIdx := 0
 	score := 0.0
 	streak := 0
+	positions := make([]int, 0, utf8.RuneCountInString(query))
 	for _, q := range query {
 		found := false
 		for ni < len(name) {
@@ -698,17 +733,20 @@ func fuzzyScore(name, query string) (float64, bool) {
 				found = true
 				streak++
 				score += 1 + float64(streak)*0.2
+				positions = append(positions, runeIdx)
 				ni += sz
+				runeIdx++
 				break
 			}
 			streak = 0
 			ni += sz
+			runeIdx++
 		}
 		if !found {
-			return 0, false
+			return 0, nil, false
 		}
 	}
-	return score, true
+	return score, positions, true
 }
 
 func applyEditKey(buf *string, cursor *int, key tea.KeyMsg) bool {
@@ -818,6 +856,43 @@ func renderName(name string, width int) string {
 	return string(r[:maxInt(0, width-1)]) + "…"
 }
 
+func renderNameHighlighted(name string, positions []int, width int) string {
+	runes := []rune(name)
+	limit := len(runes)
+	truncated := false
+	if width > 4 && limit > width {
+		limit = maxInt(0, width-1)
+		truncated = true
+	}
+
+	posSet := make(map[int]struct{}, len(positions))
+	for _, p := range positions {
+		posSet[p] = struct{}{}
+	}
+
+	// Detect date prefix length (e.g. "2024-01-15-")
+	datePrefixLen := 0
+	if datePrefix(name) {
+		datePrefixLen = 11
+	}
+
+	var b strings.Builder
+	for i := 0; i < limit; i++ {
+		ch := string(runes[i])
+		if _, ok := posSet[i]; ok {
+			b.WriteString(matchStyle.Render(ch))
+		} else if i < datePrefixLen {
+			b.WriteString(dimStyle.Render(ch))
+		} else {
+			b.WriteString(ch)
+		}
+	}
+	if truncated {
+		b.WriteString("…")
+	}
+	return b.String()
+}
+
 func relativeAge(t time.Time) string {
 	d := time.Since(t)
 	switch {
@@ -872,6 +947,18 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func envIntOr(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
 }
 
 func testKeyToMsg(s string) tea.KeyMsg {
