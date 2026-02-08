@@ -25,6 +25,9 @@ mise run lint           # runs: go vet ./... && revive -set_exit_status ./...
 
 # Format
 mise run format         # or: go fmt ./...
+
+# Install git hooks (pre-commit: format + lint)
+mise x lefthook -- lefthook install
 ```
 
 ## GitHub Actions Rule
@@ -34,6 +37,16 @@ When you modify files under `.github/workflows/`, run `pinact` afterward to pin 
 ```bash
 mise x pinact -- pinact run
 ```
+
+## Git Hooks
+
+This repo uses `lefthook` with a `pre-commit` hook.
+
+- Hook config: `.lefthook.yml`
+- Install/update hooks: `mise x lefthook -- lefthook install`
+- Pre-commit runs:
+  - `mise run format`
+  - `mise run lint`
 
 ## Architecture
 
