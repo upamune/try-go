@@ -1,3 +1,19 @@
 [tools]
 go = "1.24.13"
 pinact = "3.4.4"
+revive = "latest"
+
+[tasks.build]
+description = "Build try binary"
+run = "go build -o try ./cmd/try"
+
+[tasks.lint]
+description = "Run static analysis"
+run = [
+  "go vet ./...",
+  "revive -set_exit_status ./...",
+]
+
+[tasks.format]
+description = "Format Go code"
+run = "go fmt ./..."

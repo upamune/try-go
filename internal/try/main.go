@@ -68,6 +68,7 @@ type compatOverrides struct {
 	andConfirm *string
 }
 
+// Main runs the try CLI.
 func Main() {
 	c := cli{}
 	args := normalizeArgs(os.Args[1:])

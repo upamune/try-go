@@ -1,3 +1,4 @@
+// Package trypkg tests compatibility behavior and command script generation.
 package trypkg
 
 import (

@@ -435,13 +435,13 @@ func (m selectorModel) viewDeleteConfirm() string {
 
 func (m *selectorModel) refresh() {
 	m.items = filterEntries(m.all, strings.TrimSpace(m.query))
-	max := m.totalRows() - 1
-	if max < 0 {
+	maxRow := m.totalRows() - 1
+	if maxRow < 0 {
 		m.cursor, m.scroll = 0, 0
 		return
 	}
-	if m.cursor > max {
-		m.cursor = max
+	if m.cursor > maxRow {
+		m.cursor = maxRow
 	}
 	m.ensureScroll()
 }
@@ -707,12 +707,12 @@ func plural(n int, single, multi string) string {
 	return multi
 }
 
-func clamp(v, min, max int) int {
-	if v < min {
-		return min
+func clamp(v, lower, upper int) int {
+	if v < lower {
+		return lower
 	}
-	if v > max {
-		return max
+	if v > upper {
+		return upper
 	}
 	return v
 }
