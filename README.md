@@ -19,7 +19,7 @@ go install github.com/upamune/try-go/cmd/try@latest
 ### mise
 
 ```bash
-mise use -g go:github.com/upamune/try-go/cmd/try@latest
+mise use -g github:upamune/try-go@latest
 ```
 
 After installing `try`, enable shell integration:
