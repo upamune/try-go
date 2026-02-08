@@ -699,8 +699,8 @@ func filterEntries(all []dirEntry, query string) []scoredEntry {
 		}
 		if query != "" && len(positions) > 0 {
 			lastPos := positions[len(positions)-1]
-			score *= float64(queryRuneCount) / float64(lastPos+1)                    // density
-			score *= 10.0 / float64(utf8.RuneCountInString(e.Name)+10)               // length penalty
+			score *= float64(queryRuneCount) / float64(lastPos+1)      // density
+			score *= 10.0 / float64(utf8.RuneCountInString(e.Name)+10) // length penalty
 		}
 		res = append(res, scoredEntry{Entry: e, Score: e.Base + score, Positions: positions})
 	}
