@@ -1,6 +1,8 @@
-package main
+package trypkg
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -61,7 +63,23 @@ func TestRunExecDotRequiresName(t *testing.T) {
 
 func TestRunExecDotWithNameUsesWorktreeWhenGitExists(t *testing.T) {
 	base := t.TempDir()
-	script, err := runExec(base, ". myfeature", execOptions{})
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := t.TempDir()
+	repo := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(cwd)
+	})
+
+	script, err := runExec(base, "./repo myfeature", execOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

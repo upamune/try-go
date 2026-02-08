@@ -1,4 +1,4 @@
-package main
+package trypkg
 
 import (
 	"errors"
@@ -68,7 +68,7 @@ type compatOverrides struct {
 	andConfirm *string
 }
 
-func main() {
+func Main() {
 	c := cli{}
 	args := normalizeArgs(os.Args[1:])
 	args, compat := extractCompatFlags(args)

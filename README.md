@@ -7,7 +7,7 @@
 ### Go install
 
 ```bash
-go install github.com/upamune/try-go@latest
+go install github.com/upamune/try-go/cmd/try@latest
 ```
 
 ### mise
@@ -21,7 +21,7 @@ mise install
 Then build/install from source if needed:
 
 ```bash
-go build -o try .
+go build -o try ./cmd/try
 ```
 
 ## Usage
