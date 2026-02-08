@@ -11,8 +11,13 @@ import (
 	"github.com/alecthomas/kong"
 )
 
-const version = "0.1.0"
 const scriptWarning = "# if you can read this, run via eval: eval \"$(try exec)\""
+
+var (
+	version     = "dev"
+	commit      = ""
+	shortCommit = ""
+)
 
 var (
 	errCancelled  = errors.New("cancelled")
@@ -76,7 +81,7 @@ func Main() {
 	parser, err := kong.New(&c,
 		kong.Name("try"),
 		kong.Description("try - ephemeral workspace manager"),
-		kong.Vars{"version": version},
+		kong.Vars{"version": buildVersionString()},
 		kong.UsageOnError(),
 	)
 	if err != nil {
@@ -465,4 +470,23 @@ func isAllUpperToken(s string) bool {
 		}
 	}
 	return s != ""
+}
+
+func buildVersionString() string {
+	v := version
+	if v == "" {
+		v = "dev"
+	}
+
+	sc := shortCommit
+	if sc == "" && commit != "" {
+		sc = commit
+		if len(sc) > 7 {
+			sc = sc[:7]
+		}
+	}
+	if sc == "" {
+		return v
+	}
+	return fmt.Sprintf("%s (%s)", v, sc)
 }
