@@ -10,6 +10,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -54,6 +56,8 @@ type selectorModel struct {
 	basePath string
 	all      []dirEntry
 	items    []scoredEntry
+	help     help.Model
+	keys     selectorKeyMap
 
 	query       string
 	queryCursor int
@@ -79,13 +83,52 @@ type selectorModel struct {
 	err    error
 }
 
+type selectorKeyMap struct {
+	Up     key.Binding
+	Down   key.Binding
+	Enter  key.Binding
+	Rename key.Binding
+	Delete key.Binding
+	New    key.Binding
+	Quit   key.Binding
+}
+
+func defaultSelectorKeyMap() selectorKeyMap {
+	return selectorKeyMap{
+		Up:     key.NewBinding(key.WithKeys("up", "k", "ctrl+p"), key.WithHelp("↑/k", "up")),
+		Down:   key.NewBinding(key.WithKeys("down", "j", "ctrl+n"), key.WithHelp("↓/j", "down")),
+		Enter:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open/create")),
+		Rename: key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("^r", "rename")),
+		Delete: key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("^d", "mark delete")),
+		New:    key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("^t", "new")),
+		Quit:   key.NewBinding(key.WithKeys("esc", "ctrl+c"), key.WithHelp("esc", "cancel")),
+	}
+}
+
+func (k selectorKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{k.Up, k.Down, k.Enter, k.Rename, k.Delete, k.Quit}
+}
+
+func (k selectorKeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.Up, k.Down, k.Enter, k.New},
+		{k.Rename, k.Delete, k.Quit},
+	}
+}
+
 var (
-	titleStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
-	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
-	selStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("45")).Bold(true)
-	errorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
-	dangerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("204")).Bold(true)
-	cursorStyle = lipgloss.NewStyle().Reverse(true)
+	titleStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
+	dimStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+	selStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("45")).Bold(true)
+	errorStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
+	dangerStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("204")).Bold(true)
+	cursorStyle      = lipgloss.NewStyle().Reverse(true)
+	panelStyle       = lipgloss.NewStyle().Padding(0, 2).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238"))
+	headerStyle      = lipgloss.NewStyle().Padding(0, 2).Border(lipgloss.ThickBorder(), false, false, true, false).BorderForeground(lipgloss.Color("39"))
+	selectedRowStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("45"))
+	normalRowStyle   = lipgloss.NewStyle()
+	modeBadgeStyle   = lipgloss.NewStyle().Padding(0, 1).Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("63"))
+	statusBarStyle   = lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("238"))
 )
 
 func setNoColors(disable bool) {
@@ -99,6 +142,12 @@ func setNoColors(disable bool) {
 		errorStyle = renderer.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
 		dangerStyle = renderer.NewStyle().Foreground(lipgloss.Color("204")).Bold(true)
 		cursorStyle = renderer.NewStyle().Reverse(true)
+		panelStyle = renderer.NewStyle().Padding(0, 2).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238"))
+		headerStyle = renderer.NewStyle().Padding(0, 2).Border(lipgloss.ThickBorder(), false, false, true, false).BorderForeground(lipgloss.Color("39"))
+		selectedRowStyle = renderer.NewStyle().Bold(true).Foreground(lipgloss.Color("45"))
+		normalRowStyle = renderer.NewStyle()
+		modeBadgeStyle = renderer.NewStyle().Padding(0, 1).Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("63"))
+		statusBarStyle = renderer.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("238"))
 		return
 	}
 	titleStyle = lipgloss.NewStyle().Bold(true)
@@ -107,6 +156,12 @@ func setNoColors(disable bool) {
 	errorStyle = lipgloss.NewStyle().Bold(true)
 	dangerStyle = lipgloss.NewStyle().Bold(true)
 	cursorStyle = lipgloss.NewStyle().Reverse(true)
+	panelStyle = lipgloss.NewStyle().Padding(0, 2).Border(lipgloss.NormalBorder())
+	headerStyle = lipgloss.NewStyle().Padding(0, 2).Border(lipgloss.NormalBorder(), false, false, true, false)
+	selectedRowStyle = lipgloss.NewStyle().Bold(true)
+	normalRowStyle = lipgloss.NewStyle()
+	modeBadgeStyle = lipgloss.NewStyle().Padding(0, 1).Bold(true)
+	statusBarStyle = lipgloss.NewStyle().Padding(0, 1)
 }
 
 func runSelector(basePath, initialQuery string, opts selectorOptions) (selectorResult, error) {
@@ -123,7 +178,10 @@ func runSelector(basePath, initialQuery string, opts selectorOptions) (selectorR
 		query:       sanitizeName(initialQuery),
 		queryCursor: utf8.RuneCountInString(sanitizeName(initialQuery)),
 		markedPaths: map[string]struct{}{},
+		help:        help.New(),
+		keys:        defaultSelectorKeyMap(),
 	}
+	m.help.ShowAll = false
 	m.refresh()
 
 	if opts.AndExit && len(opts.AndKeys) == 0 {
@@ -174,6 +232,7 @@ func (m selectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.help.Width = maxInt(20, msg.Width-4)
 		m.refresh()
 		return m, nil
 	case tea.KeyMsg:
@@ -351,15 +410,35 @@ func (m selectorModel) View() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("try - directory selector"))
+	title := titleStyle.Render("try - directory selector")
+	mode := modeBadgeStyle.Render("BROWSE")
+	leftHeader := lipgloss.JoinHorizontal(lipgloss.Left, title, " ", mode)
+	rightHeader := dimStyle.Render(fmt.Sprintf("%d results / %d marked", len(m.items), len(m.markedPaths)))
+	headerWidth := maxInt(50, m.width-2)
+	headerGap := maxInt(2, headerWidth-lipgloss.Width(leftHeader)-lipgloss.Width(rightHeader))
+	headerLine := leftHeader + strings.Repeat(" ", headerGap) + rightHeader
+	b.WriteString(headerStyle.Width(headerWidth).Render(headerLine))
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("Search: "))
-	b.WriteString(renderInput(m.query, m.queryCursor))
-	b.WriteString("\n\n")
+	searchLine := dimStyle.Render(fmt.Sprintf("Search: %s", renderInput(m.query, m.queryCursor)))
+	baseLine := dimStyle.Render("Base: " + m.basePath)
+	metaWidth := maxInt(50, m.width-2)
+	metaGap := maxInt(2, metaWidth-lipgloss.Width(searchLine)-lipgloss.Width(baseLine))
+	b.WriteString(searchLine + strings.Repeat(" ", metaGap) + baseLine)
+	b.WriteString("\n")
 
+	twoCol := m.width >= 92
+	leftW := 0
+	rightW := 0
+	if twoCol {
+		usable := m.width - 3 // 2 columns + 1 char gap
+		leftW = maxInt(40, int(float64(usable)*0.57))
+		rightW = maxInt(24, usable-leftW)
+	}
+
+	var list strings.Builder
 	if m.totalRows() == 0 {
-		b.WriteString(dimStyle.Render("No directories. Type a name and press Enter to create."))
-		b.WriteString("\n")
+		list.WriteString(dimStyle.Render("No directories. Type a name and press Enter to create."))
+		list.WriteString("\n")
 	}
 
 	start, end := m.visibleRange()
@@ -367,15 +446,22 @@ func (m selectorModel) View() string {
 		selected := i == m.cursor
 		if i < len(m.items) {
 			mark := "  "
+			rowStyle := normalRowStyle
 			if selected {
 				mark = selStyle.Render("→ ")
+				rowStyle = selectedRowStyle
 			}
 			prefix := "📁 "
 			if _, ok := m.markedPaths[m.items[i].Entry.Path]; ok {
 				prefix = dangerStyle.Render("🗑 ")
 			}
-			name := renderName(m.items[i].Entry.Name, m.width-8)
-			b.WriteString(mark + prefix + name + "\n")
+			nameWidth := m.width - 8
+			if twoCol {
+				nameWidth = maxInt(16, leftW-14)
+			}
+			name := renderName(m.items[i].Entry.Name, nameWidth)
+			age := dimStyle.Render("  " + relativeAge(m.items[i].Entry.MTime))
+			list.WriteString(rowStyle.Render(mark+prefix+name) + age + "\n")
 			continue
 		}
 		if m.showCreate() {
@@ -383,11 +469,22 @@ func (m selectorModel) View() string {
 			if selected {
 				mark = selStyle.Render("→ ")
 			}
-			b.WriteString(mark + "📂 Create: " + m.previewCreateName() + "\n")
+			list.WriteString(selectedRowStyle.Render(mark + "📂 Create: " + m.previewCreateName() + "\n"))
 		}
 	}
-
+	listPanel := panelStyle.Render(strings.TrimRight(list.String(), "\n"))
+	detailPanel := panelStyle.Render(m.viewDetailsPanel())
+	if twoCol {
+		leftStyle := lipgloss.NewStyle().MaxWidth(leftW)
+		rightStyle := lipgloss.NewStyle().MaxWidth(rightW)
+		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, leftStyle.Render(listPanel), "  ", rightStyle.Render(detailPanel)))
+	} else {
+		b.WriteString(listPanel)
+		b.WriteString("\n")
+		b.WriteString(detailPanel)
+	}
 	b.WriteString("\n")
+
 	if m.status != "" {
 		b.WriteString(errorStyle.Render(m.status))
 		b.WriteString("\n")
@@ -396,20 +493,25 @@ func (m selectorModel) View() string {
 		b.WriteString(dangerStyle.Render("Delete mode: Enter confirm / Ctrl-D toggle / Esc cancel"))
 		b.WriteString("\n")
 	}
-	b.WriteString(dimStyle.Render("↑/↓ navigate  Enter select/create  Ctrl-R rename  Ctrl-D delete  Esc cancel"))
+	b.WriteString(statusBarStyle.Render(fmt.Sprintf("item %d/%d", m.cursor+1, maxInt(1, m.totalRows()))))
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render(m.help.View(m.keys)))
 	return b.String()
 }
 
 func (m selectorModel) viewRename() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Rename directory"))
-	b.WriteString("\n\n")
-	b.WriteString(dimStyle.Render("Current: "))
-	b.WriteString(m.renameOriginal)
+	b.WriteString(headerStyle.Render(lipgloss.JoinHorizontal(lipgloss.Left, titleStyle.Render("Rename directory"), " ", modeBadgeStyle.Render("RENAME"))))
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("New:     "))
-	b.WriteString(renderInput(m.renameText, m.renameCursor))
-	b.WriteString("\n\n")
+	body := []string{
+		dimStyle.Render("Current"),
+		m.renameOriginal,
+		"",
+		dimStyle.Render("New"),
+		renderInput(m.renameText, m.renameCursor),
+	}
+	b.WriteString(panelStyle.Render(strings.Join(body, "\n")))
+	b.WriteString("\n")
 	if m.status != "" {
 		b.WriteString(errorStyle.Render(m.status))
 		b.WriteString("\n")
@@ -421,19 +523,43 @@ func (m selectorModel) viewRename() string {
 func (m selectorModel) viewDeleteConfirm() string {
 	var b strings.Builder
 	names := m.markedBaseNames()
-	b.WriteString(dangerStyle.Render(fmt.Sprintf("Delete %d director%s", len(names), plural(len(names), "y", "ies"))))
-	b.WriteString("\n\n")
-	for _, n := range names {
-		b.WriteString("🗑 ")
-		b.WriteString(n)
-		b.WriteString("\n")
-	}
+	b.WriteString(headerStyle.Render(lipgloss.JoinHorizontal(lipgloss.Left, dangerStyle.Render(fmt.Sprintf("Delete %d director%s", len(names), plural(len(names), "y", "ies"))), " ", modeBadgeStyle.Render("CONFIRM"))))
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("Type YES to confirm: "))
-	b.WriteString(renderInput(m.confirmText, m.confirmCursor))
-	b.WriteString("\n\n")
+	var body strings.Builder
+	for _, n := range names {
+		body.WriteString("🗑 ")
+		body.WriteString(n)
+		body.WriteString("\n")
+	}
+	body.WriteString("\n")
+	body.WriteString(dimStyle.Render("Type YES to confirm: "))
+	body.WriteString(renderInput(m.confirmText, m.confirmCursor))
+	b.WriteString(panelStyle.Render(strings.TrimRight(body.String(), "\n")))
+	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("Enter confirm  Esc cancel"))
 	return b.String()
+}
+
+func (m selectorModel) viewDetailsPanel() string {
+	if m.cursor < len(m.items) {
+		e := m.items[m.cursor].Entry
+		lines := []string{
+			titleStyle.Render("Selection"),
+			"",
+			"📁 " + e.Name,
+			dimStyle.Render("Path: " + e.Path),
+			dimStyle.Render("Updated: " + e.MTime.Format("2006-01-02 15:04")),
+			dimStyle.Render("Age: " + relativeAge(e.MTime)),
+		}
+		return strings.Join(lines, "\n")
+	}
+	lines := []string{
+		titleStyle.Render("Create Preview"),
+		"",
+		"📂 " + m.previewCreateName(),
+		dimStyle.Render("Path: " + filepath.Join(m.basePath, m.previewCreateName())),
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *selectorModel) refresh() {
@@ -500,9 +626,9 @@ func (m selectorModel) totalRows() int {
 
 func (m selectorModel) visibleRows() int {
 	if m.height <= 0 {
-		return 12
+		return 10
 	}
-	return maxInt(3, m.height-8)
+	return maxInt(3, m.height-12)
 }
 
 func loadDirs(basePath string) ([]dirEntry, error) {
@@ -690,6 +816,20 @@ func renderName(name string, width int) string {
 		return name
 	}
 	return string(r[:maxInt(0, width-1)]) + "…"
+}
+
+func relativeAge(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
 }
 
 func sqrt(v float64) float64 {
