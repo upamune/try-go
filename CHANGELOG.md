@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.0.4](https://github.com/upamune/try-go/compare/v0.0.3...v0.0.4) - 2026-02-14
+- fix: bash init and remove j/k keybindings by @upamune in https://github.com/upamune/try-go/pull/7
+
 ## [v0.0.3](https://github.com/upamune/try-go/compare/v0.0.2...v0.0.3) - 2026-02-12
 - chore: add lefthook pre-commit format and lint by @upamune in https://github.com/upamune/try-go/pull/5
 
