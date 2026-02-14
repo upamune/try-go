@@ -201,14 +201,13 @@ func TestExecEmitsANSIWhenStdoutIsCapturedAndStderrIsTTY(t *testing.T) {
 		t.Skip("zsh is required")
 	}
 
-	cmd := exec.Command(
-		"script",
-		"-q",
-		"/dev/null",
-		"zsh",
-		"-lc",
-		"out=$(go run ./cmd/try exec --and-type foo --and-exit 2>/dev/tty); :",
-	)
+	var cmd *exec.Cmd
+	shellCmd := "out=$(go run ./cmd/try exec --and-type foo --and-exit 2>/dev/tty); :"
+	if runtime.GOOS == "linux" {
+		cmd = exec.Command("script", "-q", "-c", "zsh -lc '"+shellCmd+"'", "/dev/null")
+	} else {
+		cmd = exec.Command("script", "-q", "/dev/null", "zsh", "-lc", shellCmd)
+	}
 	cmd.Dir = "../.."
 	cmd.Env = append(os.Environ(), "NO_COLOR=")
 	out, err := cmd.CombinedOutput()

@@ -99,8 +99,8 @@ type selectorKeyMap struct {
 
 func defaultSelectorKeyMap() selectorKeyMap {
 	return selectorKeyMap{
-		Up:     key.NewBinding(key.WithKeys("up", "k", "ctrl+p"), key.WithHelp("↑/k", "up")),
-		Down:   key.NewBinding(key.WithKeys("down", "j", "ctrl+n"), key.WithHelp("↓/j", "down")),
+		Up:     key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", "up")),
+		Down:   key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", "down")),
 		Enter:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open/create")),
 		Rename: key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("^r", "rename")),
 		Delete: key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("^d", "mark delete")),
@@ -269,13 +269,13 @@ func (m selectorModel) updateBrowse(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c", "esc":
 		m.quit = true
 		return m, tea.Quit
-	case "up", "k", "ctrl+p":
+	case "up", "ctrl+p":
 		if m.cursor > 0 {
 			m.cursor--
 		}
 		m.ensureScroll()
 		return m, nil
-	case "down", "j", "ctrl+n":
+	case "down", "ctrl+n":
 		if m.cursor < m.totalRows()-1 {
 			m.cursor++
 		}
