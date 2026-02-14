@@ -76,8 +76,7 @@ func initScript(basePath string) string {
 	pathArg := " --path " + shellQuote(basePath)
 	bash := fmt.Sprintf(`try() {
   local out
-  out=$(%s exec%s "$@" 2>/dev/tty)
-  if [ $? -eq 0 ]; then
+  if out=$(%s exec%s "$@" 2>/dev/tty); then
     eval "$out"
   else
     echo "$out"
